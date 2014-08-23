@@ -75,9 +75,13 @@ BargainingMessage is a wrapper used for the messages. It contains meta-informati
 | sign_data || PKI-system data or ECDSA public key that identifies the actor and can be used to create/check a digital signature. In the case of X.509 certificates, sign_data contains one or more X.509 certificates (see Certificates section below). In the case of ECDSA keys, sign_data contains a single public key.
 |-
 | signature || digital signature over a hash of the concatenation of the protocol buffer serialized variation of the previous message with the current message :
-signature = sign(hash(pbuff(prev_msg) + "|" + pbuff(curr_msg)))
+
+    signature = sign(hash(pbuff(prev_msg) + "|" + pbuff(curr_msg)))
+
 For the initial BargainingRequest message, the content signed is the hash of the protocol buffer serialized variation of the message :
-signature = sign(hash(pbuff(curr_msg)))
+
+    signature = sign(hash(pbuff(curr_msg)))
+
 All serialized fields are serialized in numerical order (all current protocol buffers implementations serialize fields in numerical order) and signed. Optional fields that are not set are not serialized (however, setting a field to its default value will cause it to be serialized and will affect the signature). Before serialization, the signature field of current message must be set to an empty value so that the field is included in the signed BargainingMessage hash but contains no data.
 |}
 
@@ -95,7 +99,7 @@ The BargainingRequest message notifies that a buyer wants to start a new negotia
     }
 </pre>
 {|
-| network || either "main" for payments on the production Bitcoin network, or "test" for payments on test network. If a seller receives a BargainingRequest for a network it does not support it must reject the request.
+| network || Either "main" for payments on the production Bitcoin network, or "test" for payments on test network. If a seller receives a BargainingRequest for a network it does not support it must reject the request.
 |-
 | buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
 |-
@@ -124,7 +128,7 @@ The BargainingRequestACK message notifies that the seller accepts the negotiatio
     }
 </pre>
 {|
-| network || either "main" for payments on the production Bitcoin network, or "test" for payments on test network. If a buyer receives a BargainingRequestACK for a network different from the network set in the BargainaingRequest message, she must reject the request.
+| network || Either "main" for payments on the production Bitcoin network, or "test" for payments on test network. If a buyer receives a BargainingRequestACK for a network different from the network set in the BargainaingRequest message, she must reject the request.
 |-
 | buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
 |-
@@ -240,17 +244,20 @@ The BargainingCancellation message aborts the negotiation. It can be sent by the
 ==Building transactions==
 
 Only three things are required for transactions:
-    - they embed all the outputs previously sent by Seller
-    - their inputs are unspent outputs (utxos) owned by Buyer (the seller checks this point by requesting the blockchain)
-    - Buyer proves that she owns the inputs by signing the transactions
-  During negotiation phase, transactions are invalid according to bitcoin rules (sum(txins) < sum(txouts)). 
-  It ensures that these transactions will be rejected by the network if broadcast. 
-  Completion phase is entered as soon as Buyer sends a message embedding redeemable transactions.
-  Buyer can insert some additional outputs for change. This allows to bargain with utxos bigger than the desired pledge.
+    1 - they embed all the outputs previously sent by Seller
+    2 - their inputs are unspent outputs (utxos) owned by Buyer (the seller checks this point by requesting the blockchain)
+    3 - buyer proves that she owns the inputs by signing the transactions
+
+
+During negotiation phase, transactions are invalid according to bitcoin rules (sum(txins) lower than sum(txouts)). 
+It ensures that these transactions will be rejected by the network if broadcast. 
+Completion phase is entered as soon as Buyer sends a message embedding redeemable transactions.
+Buyer can insert some additional outputs for change. This allows to bargain with utxos bigger than the desired pledge.
 
 ==ECDSA Signatures==
 BargainingMessage are signed by a ECDSA private key using the Secp256k1 curve.
-Following the Bitcoin convention, the message to be signed is prefixed by \x18Bitcoin Signed Message:\n{message.size.chr}
+Following the Bitcoin convention, the message to be signed is prefixed by 
+    \x18Bitcoin Signed Message:\n{message.size.chr}
 
 ==X509 Signatures==
 TODO
@@ -260,14 +267,16 @@ TODO
 ===Messages validation===
 
 On reception of a new message, wallet software proceeds to the following validations :
-1 - HTTP headers are valid
-2 - Message has a valid format
-3 - Message references an existing negotiation (note: BargainingRequest message triggers the creation of a new negotiation)
-4 - Message has not already been received
-5 - Message is consistent with the current state of the negotiation
+    1 - HTTP headers are valid
+    2 - Message has a valid format
+    3 - Message references an existing negotiation (note: BargainingRequest message triggers the creation of a new negotiation)
+    4 - Message has not already been received
+    5 - Message is consistent with the current state of the negotiation
 
 If these conditions are checked, the message is appended to the negotiation and negotiation can be continued.
+
 If condition (2) or (5) is not checked, the message is appended to the negotiation and a BargainingCancellation message is sent.
+
 If condition (1), (3) or (4) is not checked, message is discarded
 
 ===Format validation===
@@ -347,7 +356,9 @@ If condition (1), (3) or (4) is not checked, message is discarded
 All messages are sent as HTTP requests using POST method or as HTTP responses.
 
 HTTP responses are returned with code 200 if the received message has been processed successfuly or has already been received.
+
 HTTP responses are returned with code 400 if the received message has invalid http headers or if the associated negotiation can't be retrieved.
+
 HTTP responses are returned with code 500 if a technical problem prevents a successfull processing of the received message.
 
 ==HTTP headers==
@@ -355,12 +366,12 @@ HTTP responses are returned with code 500 if a technical problem prevents a succ
 Wallet software sending messages via HTTP must set appropriate Content-Type, Content-Transfer-Encoding and Accept headers.
 
 Valid Content-Type and Accept values are:
-application/bitcoin-bargainingrequest
-application/bitcoin-bargainingrequestack
-application/bitcoin-bargainingproposal
-application/bitcoin-bargainingproposalack
-application/bitcoin-bargainingcompletion
-application/bitcoin-bargainingcancellation
+    - application/bitcoin-bargainingrequest
+    - application/bitcoin-bargainingrequestack
+    - application/bitcoin-bargainingproposal
+    - application/bitcoin-bargainingproposalack
+    - application/bitcoin-bargainingcompletion
+    - application/bitcoin-bargainingcancellation
 
 Combinations of headers depend on the current state of the negotiation. Valid combinations are:
 <pre>
