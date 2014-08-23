@@ -64,13 +64,13 @@ BargainingMessage is a wrapper used for the messages. It contains meta-informati
     }
 </pre>
 {|
-| msg_type || type of message. All implements should support "bargainingrequest", "bargainingrequestack", "bargainingproposal", "bargainingproposalack", "bargainingcompletion", "bargainingcancellation".
+| msg_type || type of message. All implementations should support "bargainingrequest", "bargainingrequestack", "bargainingproposal", "bargainingproposalack", "bargainingcompletion", "bargainingcancellation".
 |-
 | details_version || See below for a discussion of versioning/upgrading.
 |-
 | serialized_details || A protocol-buffer serialized message (BargainingRequestDetails, BargainingRequestACKDetails, BargainingProposalDetails, BargainingProposalACKDetails, BargainingCompletionDetails, BargainingCancellationDetails).
 |-
-| sign_type  || type of signature being used to authenticate the origin of the message. All implementation should support "none", "ecdsa+sha256", x509+sha256" and "x509+sha1".
+| sign_type || type of signature being used to authenticate the origin of the message. All implementations should support "none", "ecdsa+sha256", x509+sha256" and "x509+sha1".
 |-
 | sign_data || PKI-system data or ECDSA public key that identifies the actor and can be used to create/check a digital signature. In the case of X.509 certificates, sign_data contains one or more X.509 certificates (see Certificates section below). In the case of ECDSA keys, sign_data contains a single public key.
 |-
@@ -82,7 +82,7 @@ For the initial BargainingRequest message, the content signed is the hash of the
 
 signature = sign(hash(pbuff(curr_msg)))
 
-All serialized fields are serialized in numerical order (all current protocol buffers implementations serialize fields in numerical order) and signed. Optional fields that are not set are not serialized (however, setting a field to its default value will cause it to be serialized and will affect the signature). Before serialization, the signature field must be set to an empty value so that the field is included in the signed BargainingMessage hash but contains no data.
+All serialized fields are serialized in numerical order (all current protocol buffers implementations serialize fields in numerical order) and signed. Optional fields that are not set are not serialized (however, setting a field to its default value will cause it to be serialized and will affect the signature). Before serialization, the signature field of current message must be set to an empty value so that the field is included in the signed BargainingMessage hash but contains no data.
 |}
 
 ===BargainingRequestDetails===
