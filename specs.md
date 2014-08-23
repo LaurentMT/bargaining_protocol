@@ -1,0 +1,419 @@
+
+==Abstract==
+
+This document describes a protocol for communication between a buyer and a seller, enabling the negotiation of a price.
+This protocol generalizes the Payment Protocol (BIP70) implemented on top of Bitcoin.
+
+==Motivation==
+
+The Payment Protocol has been proposed to offer a better UX and better security on the payment process. Beyond being a solution for payment, the Payment Protocol perfectly matches a specific trade model based on fixed prices. 
+
+But trade models are strongly linked to cultures. Considering that Bitcoin is a global currency, it shouldn't be limited by cultural bias. It should embrace cultural diversity by proposing alternative trade models.
+
+The Bargaining Protocol aims to transpose such an alternative model, based on price negotiation, into the cryptocurrencies world.
+
+Moreover, this protocol aims to be a modern digital version of bargaining, which enables:
+- provable negotiations: messages form a chain of signatures which ensures that the terms of the negotiation can't be forged
+- trust-free negotiations: at every step, the seller is assured that the buyer owns the funds to cover the pledges
+
+The protocol takes inspiration in the Monotonic Concession Protocol from Games Theory (with some modifications : proposals are not simultaneous but sequential, more permissive stop conditions, ...)
+
+==Protocol==
+
+This document describes bargaining protocol messages encoded using Google's Protocol Buffers, authenticated using X.509 certificates or ECDSA signatures, and communicated over http/https. 
+
+Future specifications might extend this protocol to other encodings, PKI systems, or transport protocols.
+
+The bargaining protocol consists of six messages; BargainingRequestDetails, BargainingRequestACKDetails, BargainingProposalDetails, BargainingProposalACKDetails, BargainingCompletionDetails, BargainingCancellationDetails, and a message wrapper BargainingMessage.
+
+It begins with the buyer somehow indicating her desire to start a negotiation:
+
+<img src=Protocol_Sequence.png></img>
+
+==Messages==
+
+The Protocol Buffers messages are defined in [[bargaining.proto|bargaining.proto]].
+
+===Output===
+
+Outputs are used in BargainingRequestACK and BargainingProposalACK messages to specify seller's offer and where a payment (or part of a payment) should be sent. They are also used in BargainingProposal messages to specify where a refund should be sent.
+<pre>
+    message Output {
+        optional uint64 amount = 1 [default = 0];
+        optional bytes script = 2;
+    }
+</pre>
+{|
+| amount || Number of satoshis (0.00000001 BTC) to be paid
+|-
+| script || a "TxOut" script where payment should be sent. This will normally be one of the standard Bitcoin transaction scripts (e.g. pubkey OP_CHECKSIG). 
+|}
+
+===BargainingMessage===
+
+BargainingMessage is a wrapper used for the messages. It contains meta-information about the buyer, the seller and the negotiation. It also contains a digital signature.
+
+<pre>
+    message BargainingMessage {
+        required string msg_type = 1;
+        optional uint32 details_version = 2 [default = 1];
+        required bytes serialized_details = 3;
+        optional string sign_type = 4 [default = "none"];
+        optional bytes sign_data = 5;
+        optional bytes signature = 6;
+    }
+</pre>
+{|
+| msg_type || type of message. All implements should support "bargainingrequest", "bargainingrequestack", "bargainingproposal", "bargainingproposalack", "bargainingcompletion", "bargainingcancellation".
+|-
+| details_version || See below for a discussion of versioning/upgrading.
+|-
+| serialized_details || A protocol-buffer serialized message (BargainingRequestDetails, BargainingRequestACKDetails, BargainingProposalDetails, BargainingProposalACKDetails, BargainingCompletionDetails, BargainingCancellationDetails).
+|-
+| sign_type  || type of signature being used to authenticate the origin of the message. All implementation should support "none", "ecdsa+sha256", x509+sha256" and "x509+sha1".
+|-
+| sign_data || PKI-system data or ECDSA public key that identifies the actor and can be used to create/check a digital signature. In the case of X.509 certificates, sign_data contains one or more X.509 certificates (see Certificates section below). In the case of ECDSA keys, sign_data contains a single public key.
+|-
+| signature || digital signature over a hash of the concatenation of the protocol buffer serialized variation of the previous message with the current message :
+
+signature = sign(hash(pbuff(prev_msg) + '|' + pbuff(curr_msg)))
+
+For the initial BargainingRequest message, the content signed is the hash of the protocol buffer serialized variation of the message :
+
+signature = sign(hash(pbuff(curr_msg)))
+
+All serialized fields are serialized in numerical order (all current protocol buffers implementations serialize fields in numerical order) and signed. Optional fields that are not set are not serialized (however, setting a field to its default value will cause it to be serialized and will affect the signature). Before serialization, the signature field must be set to an empty value so that the field is included in the signed BargainingMessage hash but contains no data.
+|}
+
+===BargainingRequestDetails===
+
+The BargainingRequest message notifies that a buyer wants to start a new negotiation
+<pre>
+    message BargainingRequestDetails {
+        optional string network = 1 [default = "main"];
+        optional bytes buyer_data = 2;
+        optional bytes seller_data = 3;
+        required uint64 time = 4;
+        optional uint64 expires = 5;
+        optional string bargaining_url = 6;
+    }
+</pre>
+{|
+| network || either "main" for payments on the production Bitcoin network, or "test" for payments on test network. If a seller receives a BargainingRequest for a network it does not support it must reject the request.
+|-
+| buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
+|-
+| seller_data || Arbitrary data that may be used by the seller to identify the negotiation. 
+|-
+| time || Unix timestamp (seconds since 1-Jan-1970 UTC) when the BargainingRequest was created.
+|-
+| expires || Unix timestamp (UTC) after which the negotiation should be considered aborted.
+|-
+| bargaining_url || Secure (usually https) location where the seller may send her messages. If unset, means the buyer expects synchronous response from the buyer.
+|}
+
+===BargainingRequestACKDetails===
+
+The BargainingRequestACK message notifies that the seller accepts the negotiation and embeds seller's initial offer.
+<pre>
+    message BargainingRequestACKDetails {
+        optional string network = 1 [default = "main"];
+        optional bytes buyer_data = 2;
+        optional bytes seller_data = 3;
+        required uint64 time = 4;
+        optional uint64 expires = 5;
+        optional string bargaining_url = 6;
+        repeated Output outputs = 7;
+        optional string memo = 8;
+    }
+</pre>
+{|
+| network || either "main" for payments on the production Bitcoin network, or "test" for payments on test network. If a buyer receives a BargainingRequestACK for a network different from the network set in the BargainaingRequest message, she must reject the request.
+|-
+| buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
+|-
+| seller_data || Arbitrary data that may be used by the seller to identify the negotiation. 
+|-
+| time || Unix timestamp (seconds since 1-Jan-1970 UTC) when the BargainingRequestACK was created.
+|-
+| expires || Unix timestamp (UTC) after which the negotiation should be considered aborted.
+|-
+| bargaining_url || Secure (usually https) location where the seller may send her messages. If unset, means the buyer expects synchronous response from the buyer.
+|-
+| outputs || one or more outputs where Bitcoins are to be sent. The customer will be asked to pay the sum, and the payment shall be split among the Outputs with non-zero amounts (if there are more than one; Outputs with zero amounts shall be ignored).
+|-
+| memo || UTF-8 encoded, plain-text note from the seller to the buyer.
+|}
+
+===BargainingProposalDetails===
+
+The BargainingProposal message embeds buyer's offer.
+<pre>
+    message BargainingProposalDetails {
+        optional bytes buyer_data = 1;
+        optional bytes seller_data = 2;
+        required uint64 time = 3;
+        repeated bytes transactions = 4;
+        repeated Output refund_to = 5;
+        optional string memo = 6;
+    }
+</pre>
+{|
+| buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
+|-
+| seller_data || Arbitrary data that may be used by the seller to identify the negotiation. 
+|-
+| time || Unix timestamp (seconds since 1-Jan-1970 UTC) when the BargainingProposal was created.
+|-
+| transactions || One or more signed Bitcoin transactions. If the transactions are valid and fully pay the last outputs sent by the seller, the message is considered as an agreement on the price.
+|-
+| refund_to || One or more outputs where the merchant may return funds, if necessary. The merchant may return funds using these outputs for up to 2 months after the time of the BargainingCompletion message. After that time has expired, parties must negotiate if returning of funds becomes necessary.
+|-
+| memo || UTF-8 encoded, plain-text note from the buyer to the seller.
+|}
+
+===BargainingProposalACKDetails===
+
+The BargainingProposalACK message embeds seller's offer.
+<pre>
+    message BargainingProposalACKDetails {
+        optional bytes buyer_data = 1;
+        optional bytes seller_data = 2;
+        required uint64 time = 3;
+        repeated Output outputs = 4;
+        optional string memo = 5;
+    }
+</pre>
+{|
+| buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
+|-
+| seller_data || Arbitrary data that may be used by the seller to identify the negotiation. 
+|-
+| time || Unix timestamp (seconds since 1-Jan-1970 UTC) when the BargainingProposalACK was created.
+|-
+| outputs || one or more outputs where Bitcoins are to be sent. The customer will be asked to pay the sum, and the payment shall be split among the Outputs with non-zero amounts (if there are more than one; Outputs with zero amounts shall be ignored).
+|-
+| memo || UTF-8 encoded, plain-text note from the seller to the buyer.
+|}
+
+===BargainingCompletionDetails===
+
+The BargainingCompletion message confirms the agreement of the seller after a redeemable BargainingProposal has been received.
+<pre>
+    message BargainingCompletionDetails {
+        optional bytes buyer_data = 1;
+        optional bytes seller_data = 2;
+        required uint64 time = 3;
+        repeated bytes transactions = 4;
+        optional string memo = 5;
+    }
+</pre>
+{|
+| buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
+|-
+| seller_data || Arbitrary data that may be used by the seller to identify the negotiation. 
+|-
+| time || Unix timestamp (seconds since 1-Jan-1970 UTC) when the BargainingCompletion was created.
+|-
+| transactions || The redeemable transactions sent by the buyer which will be (have been) broadcast to the network.
+|-
+| memo || UTF-8 encoded, plain-text note from the seller to the buyer.
+|}
+
+===BargainingCancellationDetails===
+
+The BargainingCancellation message aborts the negotiation. It can be sent by the buyer or the seller.
+<pre>
+    message BargainingCancellationDetails {
+        optional bytes buyer_data = 1;
+        optional bytes seller_data = 2;
+        required uint64 time = 3;
+        optional string memo = 4;
+    }
+</pre>
+{|
+| buyer_data || Arbitrary data that may be used by the buyer to identify the negotiation. 
+|-
+| seller_data || Arbitrary data that may be used by the seller to identify the negotiation. 
+|-
+| time || Unix timestamp (seconds since 1-Jan-1970 UTC) when the BargainingCompletion was created.
+|-
+| memo || UTF-8 encoded, plain-text note from the seller or the buyer.
+|}
+
+==Building transactions==
+
+Only three things are required for transactions:
+    - they embed all the outputs previously sent by Seller
+    - their inputs are unspent outputs (utxos) owned by Buyer (the seller checks this point by requesting the blockchain)
+    - Buyer proves that she owns the inputs by signing the transactions
+  During negotiation phase, transactions are invalid according to bitcoin rules (sum(txins) < sum(txouts)). 
+  It ensures that these transactions will be rejected by the network if broadcast. 
+  Completion phase is entered as soon as Buyer sends a message embedding redeemable transactions.
+  Buyer can insert some additional outputs for change. This allows to bargain with utxos bigger than the desired pledge.
+
+==ECDSA Signatures==
+BargainingMessage are signed by a ECDSA private key using the Secp256k1 curve.
+Following the Bitcoin convention, the message to be signed is prefixed by \x18Bitcoin Signed Message:\n{message.size.chr}
+
+==X509 Signatures==
+TODO
+
+==Protocol rules==
+
+===Messages validation===
+
+On reception of a new message, wallet software proceeds to the following validations :
+1 - HTTP headers are valid
+2 - Message has a valid format
+3 - Message references an existing negotiation (note: BargainingRequest message triggers the creation of a new negotiation)
+4 - Message has not already been received
+5 - Message is consistent with the current state of the negotiation
+
+If these conditions are checked, the message is appended to the negotiation and negotiation can be continued.
+If condition (2) or (5) is not checked, the message is appended to the negotiation and a BargainingCancellation message is sent.
+If condition (1), (3) or (4) is not checked, message is discarded
+
+===Format validation===
+
+- BargainingMessage
+    - msg_type has an appropriate value
+    - sign_type has an appropriate value
+
+- BargainingRequestDetails
+    - time is set
+    - expires is unset or is greater than time
+    - network has an appropriate value
+
+- BargainingRequestACKDetails
+    - time is set
+    - expires is unset or is greater than time
+    - network has an appropriate value
+    - outputs is not empty and for each output :
+        - output.amount is set and is greater or equal than 0
+        - output.script is set and is a valid script
+    - memo is unset or has a valid UTF-8 encoding
+
+- BargainingProposalDetails
+    - time is set
+    - transactions is not empty and for each transaction :
+        - conditions 2, 3, 4, 5, 6 defined in https://en.bitcoin.it/wiki/Protocol_rules#.22tx.22_messages are checked
+        - signatures are valid
+        - all inputs referenced in transactions are valid utxos (checked by requesting the blockchain)
+    - refund_to is not empty if all transactions are valid and redeemable
+    - memo is unset or has a valid UTF-8 encoding
+
+- BargainingCompletionDetails
+    - time is set
+    - transactions is not empty and for each transaction :
+        - conditions 2, 3, 4, 5, 6 defined in https://en.bitcoin.it/wiki/Protocol_rules#.22tx.22_messages are checked
+        - signatures are valid
+    - memo is unset or has a valid UTF-8 encoding
+
+- BargainingCancellationDetails
+    - time is set
+    - memo is unset or has a valid UTF-8 encoding
+
+===Consistency validation===
+
+- Rules applied to all messages
+    - Previous message has been fully validated (format and consistency)
+    - BargainingMessage signature is valid
+    - sign_type and sign_data are identical to those appearing in previous received messages
+    - msg_type is consistent with the role of the sender:
+        BUYER  => {"bargainingrequest", "bargainingproposal", "bargainingcancellation"}
+        SELLER => {"bargainingrequestack", "bargainingproposalack", "bargainingcompletion", "bargainingcancellation"}
+    - msg_type is consistent with the current state of the negotiation:
+        INITIALIZATION => {"bargainingrequest", "bargainingrequestack", "bargainingcancellation"}
+        NEGOTIATION => {"bargainingproposal", "bargainingproposalack", "bargainingcancellation"}
+        COMPLETION => {"bargainingcompletion", "bargainingcancellation"}
+        COMPLETED => {}
+        CANCELLED => {}
+    - time value is greater than the value defined in the previous received message
+    - time value is before expiry date defined by the actor receiving the message
+
+- Rules applied to BargainingRequestACK messages
+    - network is identical to the network defined in the BargainingRequest message
+
+- Rules applied to BargainingProposal messages
+    - the proposed amount is greater or equal to the previous amount
+    - transactions contains all outputs from previous BargainingProposalACK message
+    - if the proposed amount is greater or equal to the previous amount proposed by the seller, check that all transactions are redeemable
+
+- Rules applied to BargainingProposalACK messages
+    - the proposed amount is lower or equal to the previous amount
+
+- Rules applied to BargainingCompletion messages
+    - transactions contains all transactions from previous BargainingProposal message
+
+==HTTP methods and codes==
+
+All messages are sent as HTTP requests using POST method or as HTTP responses.
+
+HTTP responses are returned with code 200 if the received message has been processed successfuly or has already been received.
+HTTP responses are returned with code 400 if the received message has invalid http headers or if the associated negotiation can't be retrieved.
+HTTP responses are returned with code 500 if a technical problem prevents a successfull processing of the received message.
+
+==HTTP headers==
+
+Wallet software sending messages via HTTP must set appropriate Content-Type, Content-Transfer-Encoding and Accept headers.
+
+Valid Content-Type and Accept values are:
+application/bitcoin-bargainingrequest
+application/bitcoin-bargainingrequestack
+application/bitcoin-bargainingproposal
+application/bitcoin-bargainingproposalack
+application/bitcoin-bargainingcompletion
+application/bitcoin-bargainingcancellation
+
+Combinations of headers depend on the current state of the negotiation. Valid combinations are:
+<pre>
+Content-Type: application/bitcoin-bargainingrequest
+Accept: application/bitcoin-bargainingrequestack, application/bitcoin-bargainingcancellation
+Content-Transfer-Encoding: binary
+</pre>
+
+<pre>
+Content-Type: application/bitcoin-bargainingrequestack
+Accept: application/bitcoin-bargainingproposal, application/bitcoin-bargainingcancellation
+Content-Transfer-Encoding: binary
+</pre>
+
+<pre>
+Content-Type: application/bitcoin-bargainingproposal
+Accept: application/bitcoin-bargainingproposalack, application/bitcoin-bargainingcancellation
+Content-Transfer-Encoding: binary
+</pre>
+
+<pre>
+Content-Type: application/bitcoin-bargainingproposal
+Accept: application/bitcoin-bargainingcompletion, application/bitcoin-bargainingcancellation
+Content-Transfer-Encoding: binary
+</pre>
+
+==Extensibility==
+
+The protocol buffers serialization format is designed to be extensible. In particular, new, optional fields can be added to a message and will be ignored (but saved/re-transmitted) by old implementations.
+
+Messages may be extended with new optional fields and still be considered "version 1." Old implementations will be able to validate signatures against messages containing the new fields, but (obviously) will not be able to display whatever information is contained in the new, optional fields to the user.
+
+If it becomes necessary at some point in the future to produce messages that are accepted *only* by new implementations, we can do so by defining a new format with version=2. Old implementations should let the user know that they need to upgrade their software when they get an up-version message.
+
+Implementations that need to extend messages in this specification shall use tags starting at 1000, and shall update the specifications to avoid
+conflicts with other extensions.
+
+==References==
+
+Payment Protocol : https://github.com/bitcoin/bips/blob/master/bip-0070.mediawiki
+
+Protocol Buffers : https://developers.google.com/protocol-buffers/
+
+==Reference implementation==
+
+PyBargain_protocol : https://github.com/LaurentMT/pybargain_protocol
+
+Python seller demo : https://github.com/LaurentMT/pybargain_demo_server
+
+Python buyer demo : https://github.com/LaurentMT/pybargain_demo_client
+
+
