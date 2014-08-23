@@ -70,7 +70,7 @@ BargainingMessage is a wrapper used for the messages. It contains meta-informati
 |-
 | serialized_details || A protocol-buffer serialized message (BargainingRequestDetails, BargainingRequestACKDetails, BargainingProposalDetails, BargainingProposalACKDetails, BargainingCompletionDetails, BargainingCancellationDetails).
 |-
-| sign_type || type of signature being used to authenticate the origin of the message. All implementations should support "none", "ecdsa+sha256", x509+sha256" and "x509+sha1".
+| sign_type || type of signature being used to authenticate the origin of the message. All implementations should support "none", "ecdsa+sha256", "x509+sha256" and "x509+sha1".
 |-
 | sign_data || PKI-system data or ECDSA public key that identifies the actor and can be used to create/check a digital signature. In the case of X.509 certificates, sign_data contains one or more X.509 certificates (see Certificates section below). In the case of ECDSA keys, sign_data contains a single public key.
 |-
