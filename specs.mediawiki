@@ -13,7 +13,9 @@ But trade models are strongly linked to cultures. Considering that Bitcoin is a 
 The Bargaining Protocol aims to transpose such an alternative model, based on price negotiation, into the cryptocurrencies world.
 
 Moreover, this protocol aims to be a modern digital version of bargaining, which enables:
+
 - provable negotiations: messages form a chain of signatures which ensures that the terms of the negotiation can't be forged
+
 - trust-free negotiations: at every step, the seller is assured that the buyer owns the funds to cover the pledges
 
 The protocol takes inspiration in the Monotonic Concession Protocol from Games Theory (with some modifications : proposals are not simultaneous but sequential, more permissive stop conditions, ...)
